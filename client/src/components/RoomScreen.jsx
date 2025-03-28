@@ -1,4 +1,4 @@
-// frontend/src/components/RoomScreen.js
+
 import { useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { useState, useEffect } from "react";

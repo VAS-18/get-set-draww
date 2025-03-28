@@ -31,9 +31,8 @@ redisClient.on("connect", () => console.log("Connected to Redis"));
 await redisClient.connect();
 
 // Map to track socket connections
-const socketIdToPlayerMap = new Map(); // socketId -> { roomId, userId }
+const socketIdToPlayerMap = new Map(); 
 
-// Socket.IO Connection Handling
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
@@ -47,16 +46,16 @@ io.on("connection", (socket) => {
       const roomData = {
         theme,
         players: [{
-          userId,           // Unique user ID
-          socketId: socket.id, // Current socket ID
+          userId,           
+          socketId: socket.id, 
           nickname,
           ready: false,
-          disconnectTime: null // For tracking disconnection
+          disconnectTime: null 
         }],
       };
 
       await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
-      socketIdToPlayerMap.set(socket.id, { roomId, userId }); // Track in Map
+      socketIdToPlayerMap.set(socket.id, { roomId, userId }); 
       socket.join(roomId);
       socket.emit("roomCreated", { roomId, theme, userId });
       io.to(roomId).emit("playerUpdate", { players: roomData.players });
@@ -102,7 +101,7 @@ io.on("connection", (socket) => {
       console.error("Error joining room:", error);
     }
   });
-  
+
   socket.on("gameState", async ({ roomId, playerId, readyState }) => {
     try {
       if (typeof readyState !== "boolean" || !roomId || !playerId) {
@@ -174,7 +173,7 @@ io.on("connection", (socket) => {
     try {
       const roomDataString = await redisClient.get(roomId);
       if (!roomDataString) {
-        socketIdToPlayerMap.delete(socket.id); // Clean up Map if room is gone
+        socketIdToPlayerMap.delete(socket.id); 
         return;
       }
 
@@ -195,7 +194,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// Periodic Cleanup for Disconnected Players
+
 setInterval(async () => {
   try {
     const roomKeys = await redisClient.keys("*");
@@ -227,7 +226,7 @@ setInterval(async () => {
   } catch (error) {
     console.error("Error in cleanup task:", error);
   }
-}, 60000); // Run every minute
+}, 60000); 
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

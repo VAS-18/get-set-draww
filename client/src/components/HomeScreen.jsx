@@ -1,4 +1,4 @@
-// frontend/src/components/HomeScreen.js
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
