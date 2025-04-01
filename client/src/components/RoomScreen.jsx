@@ -1,4 +1,3 @@
-
 import { useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { useState, useEffect } from "react";
@@ -7,12 +6,15 @@ const RoomScreen = () => {
   const { roomId } = useParams();
   const socket = useSocket();
   const [players, setPlayers] = useState([]);
-  const userId = localStorage.getItem("userId"); // Get current user's ID
+  const [userId, setUserId] = useState(localStorage.getItem("userId")); // Gets UserId from the localStorage.
 
   useEffect(() => {
     if (!socket) return;
 
     const storedUserId = localStorage.getItem("userId");
+    const storedUserJoinedId = localStorage.getItem("userJoineId");
+    console.log("Stored userId from localStorage:", storedUserId);
+    console.log("Stored userJoinedId from localStorage:", storedUserJoinedId);
     if (storedUserId && roomId) {
       socket.emit("reconnectRoom", { userId: storedUserId, roomId });
     }
@@ -28,9 +30,9 @@ const RoomScreen = () => {
       console.log(`Rejoined room ${rejoinedRoomId} as ${userId}`);
       localStorage.setItem("roomId", rejoinedRoomId);
       localStorage.setItem("userId", userId);
+      setUserId(userId);
     });
 
-    // Handle 
     socket.on("error", ({ message }) => {
       console.error("Socket error:", message);
     });
@@ -43,7 +45,7 @@ const RoomScreen = () => {
 
   const toggleReady = (playerId) => {
     const player = players.find((p) => p.userId === playerId);
-    if (!player || player.userId !== userId) return; // Only allow current user to toggle their own state
+    if (!player || player.userId !== userId) return; 
 
     const newReadyState = !player.ready;
     socket.emit("gameState", {
@@ -52,6 +54,9 @@ const RoomScreen = () => {
       readyState: newReadyState,
     });
   };
+
+  console.log("Current userId:", userId);
+  console.log("Players list:", players);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -71,6 +76,15 @@ const RoomScreen = () => {
                   }`}
                 >
                   <div>
+                  <div className="flex items-center space-x-2">
+                  {player.avatar && (
+                    <img
+                      src={player.avatar.payload || player.avatar}
+                      alt="Avatar"
+                      className="w-10 h-10 rounded-full"
+                    />
+                  )}
+                  </div>
                     <span>{player.nickname}</span>
                     <span>
                       {" "}

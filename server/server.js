@@ -40,7 +40,7 @@ io.on("connection", (socket) => {
   const userId = uuidv4();
   socket.emit("userId", userId);
 
-  socket.on("createRoom", async ({ nickname, theme }) => {
+  socket.on("createRoom", async ({ nickname, theme, avatar }) => {
     try {
       const roomId = generateRoomCode();
       const roomData = {
@@ -49,6 +49,7 @@ io.on("connection", (socket) => {
           userId,           
           socketId: socket.id, 
           nickname,
+          avatar,
           ready: false,
           disconnectTime: null 
         }],
@@ -66,7 +67,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("joinRoom", async ({ roomId, nickname, userId: providedUserId }) => {
+  socket.on("joinRoom", async ({ roomId, nickname, avatar, userId: providedUserId }) => {
     try {
       const roomDataString = await redisClient.get(roomId);
       if (!roomDataString) {
@@ -85,6 +86,7 @@ io.on("connection", (socket) => {
         userId: finalUserId,
         socketId: socket.id,
         nickname,
+        avatar,
         ready: false,
         disconnectTime: null
       };

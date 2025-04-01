@@ -1,7 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../context/SocketContext';
+import avatars from '../../avatars';
 
 const HomeScreen = () => {
   const socket = useSocket();
@@ -11,17 +11,18 @@ const HomeScreen = () => {
   const [showPopup, setShowPopup] = useState(false);
   const [roomIdInput, setRoomIdInput] = useState('');
   const [theme, setTheme] = useState('');
-  const avatars = ['/avatars/avatar1.png', '/avatars/avatar2.png', '/avatars/avatar3.png'];
   const themes = ['Animals', 'Space', 'Food'];
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('roomCreated', ({ roomId }) => {
+    socket.on('roomCreated', ({ roomId, userId }) => {
+      localStorage.setItem("userId", userId); 
       navigate(`/${roomId}`);
     });
 
-    socket.on('roomJoined', ({ roomId }) => {
+    socket.on('roomJoined', ({ roomId, userId }) => {
+      localStorage.setItem("userJoinedId", userId);
       navigate(`/${roomId}`);
     });
 
@@ -41,7 +42,7 @@ const HomeScreen = () => {
       alert('Please select a nickname, avatar, and theme');
       return;
     }
-    socket.emit('createRoom', { nickname, theme });
+    socket.emit('createRoom', { nickname, theme, avatar: selectedAvatar });
   };
 
   const handleJoinRoom = () => {
@@ -49,7 +50,8 @@ const HomeScreen = () => {
       alert('Please enter a nickname, avatar, and room code');
       return;
     }
-    socket.emit('joinRoom', { roomId: roomIdInput, nickname });
+    const storedUserID = localStorage.getItem("userJoineId");
+    socket.emit('joinRoom', { roomId: roomIdInput, nickname, avatar: selectedAvatar, userId: storedUserID});
   };
 
   return (
@@ -67,11 +69,11 @@ const HomeScreen = () => {
 
         <div className="mb-4">
           <h2 className="text-lg font-semibold">Choose an Avatar</h2>
-          <div className="flex space-x-2 overflow-x-auto">
+          <div className="flex space-x-10 overflow-x-auto">
             {avatars.map((avatar, index) => (
               <img
                 key={index}
-                src={avatar}
+                src={avatar.payload}
                 alt={`Avatar ${index + 1}`}
                 className={`w-16 h-16 cursor-pointer rounded-full ${
                   selectedAvatar === avatar ? 'border-4 border-blue-500' : ''
