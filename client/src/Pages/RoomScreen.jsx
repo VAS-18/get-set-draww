@@ -1,9 +1,10 @@
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { useState, useEffect } from "react";
 
 const RoomScreen = () => {
   const { roomId } = useParams();
+  const navigate = useNavigate();
   const socket = useSocket();
   const [players, setPlayers] = useState([]);
   const [userId, setUserId] = useState(localStorage.getItem("userId")); // Gets UserId from the localStorage.
@@ -43,6 +44,13 @@ const RoomScreen = () => {
     };
   }, [socket, roomId]);
 
+
+  useEffect(() => {
+    if(players.length === 2 && players.every(p => p.ready)){
+      navigate('/drawing-board');
+    }
+  },[players,navigate])
+
   const toggleReady = (playerId) => {
     const player = players.find((p) => p.userId === playerId);
     if (!player || player.userId !== userId) return; 
@@ -55,13 +63,15 @@ const RoomScreen = () => {
     });
   };
 
+
+
   console.log("Current userId:", userId);
   console.log("Players list:", players);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="bg-white p-6 rounded-lg shadow-lg">
-        <h1 className="text-2xl font-bold">Room: {roomId}</h1>
+        <h1 className="text-2xl font-bold font-inter">Room: {roomId}</h1>
         {players.length === 0 ? (
           <p>Waiting for players...</p>
         ) : (
