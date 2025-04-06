@@ -16,23 +16,32 @@ const GameOptions = ({
         <h2 className="text-xl font-bold mb-4">Game Options</h2>
 
         <div className="mb-4">
-          <select
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            className="w-full p-2 border rounded mb-2"
-          >
-            <option value="">Select a theme</option>
-            {themes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+          <h3 className="mb-2">Select Theme</h3>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {themes.map((t, index) => (
+              <button
+                key={index}
+                className={`p-2 rounded ${
+                  theme === t.title 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-black'
+                } hover:opacity-70`}
+                onClick={() => setTheme(t.title)}
+              >
+                {t.title}
+              </button>
             ))}
-          </select>
+          </div>
           <button
             onClick={handleCreateRoom}
-            className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600"
+            disabled={!theme}
+            className={`w-full p-2 rounded ${
+              theme 
+                ? 'bg-green-500 hover:bg-green-600 text-white' 
+                : 'bg-gray-300 cursor-not-allowed'
+            }`}
           >
-            Create a Room
+            {theme ? 'Create a Room' : 'Select a Theme First'}
           </button>
         </div>
 
