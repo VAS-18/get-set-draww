@@ -1,21 +1,25 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, use } from "react";
+import * as motion from "motion/react-client";
+import colorSwatches from "../../utils/colors";
 
 const DrawingCanvas = () => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [tool, setTool] = useState('pencil'); // options: pencil, eraser, bucket
+  const [tool, setTool] = useState("pencil");
   const [lineWidth, setLineWidth] = useState(5);
-  const [color, setColor] = useState('#000000');
+  const [color, setColor] = useState("#000000");
+  const [sizeSelected, setSizeSelected] = useState(10);
+  const [selectedColor, setSelectedColor] = useState(null);
 
   // Initialize canvas and context
   useEffect(() => {
     const canvas = canvasRef.current;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    canvas.width = 1200;
+    canvas.height = 800;
+    const ctx = canvas.getContext("2d");
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctxRef.current = ctx;
@@ -24,10 +28,10 @@ const DrawingCanvas = () => {
   // Update context when tool, color, or lineWidth changes
   useEffect(() => {
     if (ctxRef.current) {
-      if (tool === 'eraser') {
-        ctxRef.current.globalCompositeOperation = 'destination-out';
+      if (tool === "eraser") {
+        ctxRef.current.globalCompositeOperation = "destination-out";
       } else {
-        ctxRef.current.globalCompositeOperation = 'source-over';
+        ctxRef.current.globalCompositeOperation = "source-over";
         ctxRef.current.strokeStyle = color;
       }
       ctxRef.current.lineWidth = lineWidth;
@@ -35,7 +39,7 @@ const DrawingCanvas = () => {
   }, [tool, color, lineWidth]);
 
   const hexToRgba = (hex) => {
-    hex = hex.replace(/^#/, '');
+    hex = hex.replace(/^#/, "");
     const bigint = parseInt(hex, 16);
     const r = (bigint >> 16) & 255;
     const g = (bigint >> 8) & 255;
@@ -43,7 +47,7 @@ const DrawingCanvas = () => {
     return [r, g, b, 255];
   };
 
-  // Flood-fill algorithm for the paint bucket tool
+  // Flood-fill algorithm for the paint bucket tool (Thank you yt T_T)
   const floodFill = (startX, startY) => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -51,7 +55,7 @@ const DrawingCanvas = () => {
     const data = imageData.data;
     const width = canvas.width;
     const height = canvas.height;
-    
+
     const stack = [[startX, startY]];
     const startPos = (startY * width + startX) * 4;
     const startColor = data.slice(startPos, startPos + 4);
@@ -69,7 +73,10 @@ const DrawingCanvas = () => {
       let currentPos = (y * width + x) * 4;
 
       // Move upward to find the top boundary of the area to fill.
-      while (y >= 0 && colorsMatch(data.slice(currentPos, currentPos + 4), startColor)) {
+      while (
+        y >= 0 &&
+        colorsMatch(data.slice(currentPos, currentPos + 4), startColor)
+      ) {
         y--;
         currentPos -= width * 4;
       }
@@ -81,7 +88,10 @@ const DrawingCanvas = () => {
       let reachRight = false;
 
       // Fill downward and push adjacent pixels on the stack when needed.
-      while (y < height && colorsMatch(data.slice(currentPos, currentPos + 4), startColor)) {
+      while (
+        y < height &&
+        colorsMatch(data.slice(currentPos, currentPos + 4), startColor)
+      ) {
         // Fill the current pixel with the new color.
         data[currentPos] = fillColor[0];
         data[currentPos + 1] = fillColor[1];
@@ -123,7 +133,7 @@ const DrawingCanvas = () => {
   // Start drawing or apply the paint bucket if that tool is selected.
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
-    if (tool === 'bucket') {
+    if (tool === "bucket") {
       floodFill(offsetX, offsetY);
       return;
     }
@@ -133,54 +143,115 @@ const DrawingCanvas = () => {
   };
 
   const draw = (e) => {
-    if (!isDrawing || tool === 'bucket') return;
+    if (!isDrawing || tool === "bucket") return;
     const { offsetX, offsetY } = e.nativeEvent;
     ctxRef.current.lineTo(offsetX, offsetY);
     ctxRef.current.stroke();
   };
 
   const finishDrawing = () => {
-    if (tool !== 'bucket') {
+    if (tool !== "bucket") {
       ctxRef.current.closePath();
     }
     setIsDrawing(false);
   };
 
+  //on click this fucn changes the size of the current brush
+  const handleBrushSize = (size) => {
+    setLineWidth(size);
+    setSizeSelected(size);
+  };
+
+  const buttonStyle = [
+    { size: 5, className: "h-2 w-2" },
+    { size: 10, className: "h-6 w-6" },
+    { size: 15, className: "h-9 w-9" },
+    { size: 20, className: "h-12 w-12" },
+  ];
+
   return (
-    <div>
-      <div style={{ position: 'fixed', top: 10, left: 10, zIndex: 10, background: '#fff', padding: 10 }}>
-        <button onClick={() => setTool('pencil')}>Pencil</button>
-        <button onClick={() => setTool('eraser')}>Eraser</button>
-        <button onClick={() => setTool('bucket')}>Paint Bucket</button>
-        <label style={{ marginLeft: '10px' }}>
-          Color:
-          <input 
-            type="color" 
-            value={color} 
-            onChange={(e) => setColor(e.target.value)} 
-            style={{ marginLeft: '5px' }}
-          />
-        </label>
-        <label style={{ marginLeft: '10px' }}>
-          Size:
-          <input 
-            type="range" 
-            min="1" 
-            max="50" 
-            value={lineWidth} 
-            onChange={(e) => setLineWidth(parseInt(e.target.value, 10))} 
-            style={{ marginLeft: '5px' }}
-          />
-        </label>
+    <div className="h-screen grid grid-cols-[1fr_3fr_1fr] overflow-hidden">
+      {/* Left Sidebar */}
+      <div className="p-4 border-r">
+        <div className="flex flex-col space-y-2">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            className="border p-2"
+            onClick={() => setTool("pencil")}
+          >
+            Pencil
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            className="border p-2"
+            onClick={() => setTool("eraser")}
+          >
+            Eraser
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            className="border p-2"
+            onClick={() => setTool("bucket")}
+          >
+            Bucket
+          </motion.button>
+
+          <div className="flex space-x-4 items-center my-10">
+            <span>Size : </span>
+            {buttonStyle.map((btn) => (
+              <motion.button
+                key={btn.size}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => handleBrushSize(btn.size)}
+                className={`bg-gray-400 border-2 p-2 rounded-full ${
+                  btn.className
+                } ${
+                  sizeSelected === btn.size
+                    ? "border-3 border-black"
+                    : "border-transparent"
+                }`}
+              />
+            ))}
+          </div>
+          <div className="">
+            {colorSwatches.map((swatch) => (
+              <div key={swatch.name} className="mb-1">
+                <div className="flex justify-center">
+                  {swatch.shades.map((shade) => (
+                    <motion.button
+                      key={shade}
+                      className={`w-6 h-6 border ${
+                        selectedColor === shade
+                          ? "border-black"
+                          : "border-transparent"
+                      }`}
+                      style={{ backgroundColor: shade }}
+                      onClick={() => setColor(shade)}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <canvas
-        ref={canvasRef}
-        style={{ border: '1px solid #000' }}
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={finishDrawing}
-        onMouseLeave={finishDrawing}
-      />
+
+      {/* Canvas Area */}
+      <div className="flex justify-center items-center">
+        <canvas
+          ref={canvasRef}
+          className="border border-dashed"
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={finishDrawing}
+          onMouseLeave={finishDrawing}
+        />
+      </div>
+
+      {/* Right Sidebar */}
+      <div className="p-4 border-l"></div>
     </div>
   );
 };

@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
-import avatars from "../../avatars";
+import avatars from "../../utils/avatars";
 import AvatarSelect from "../components/AvatarSelect";
 import GameOptions from "../components/GameOptions";
-import Themes from "../../themes";
+import Themes from "../../utils/themes";
 
 const HomeScreen = () => {
   const socket = useSocket();
