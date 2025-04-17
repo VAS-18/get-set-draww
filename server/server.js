@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { generateRoomCode } from "./utils/generate-room-code.js";
 import { createClient } from "redis";
 import { v4 as uuidv4 } from "uuid";
+import words from "./utils/words.js";
 
 // dotenv configuration
 dotenv.config();
@@ -31,7 +32,7 @@ redisClient.on("connect", () => console.log("Connected to Redis"));
 await redisClient.connect();
 
 // Map to track socket connections
-const socketIdToPlayerMap = new Map(); 
+const socketIdToPlayerMap = new Map();
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
@@ -43,66 +44,108 @@ io.on("connection", (socket) => {
   socket.on("createRoom", async ({ nickname, theme, avatar }) => {
     try {
       const roomId = generateRoomCode();
+
+      const challenge = await words(theme);
+
       const roomData = {
         theme,
-        players: [{
-          userId,           
-          socketId: socket.id, 
-          nickname,
-          avatar,
-          ready: false,
-          disconnectTime: null 
-        }],
+        challenge,
+        players: [
+          {
+            userId,
+            socketId: socket.id,
+            nickname,
+            avatar,
+            ready: false,
+            disconnectTime: null,
+          },
+        ],
       };
 
       await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
-      socketIdToPlayerMap.set(socket.id, { roomId, userId }); 
+      socketIdToPlayerMap.set(socket.id, { roomId, userId });
       socket.join(roomId);
+
+      // Emit room creation info
       socket.emit("roomCreated", { roomId, theme, userId });
       io.to(roomId).emit("playerUpdate", { players: roomData.players });
-      console.log(`Room ${roomId} created with theme: ${theme}`);
+
+      // Emit the challenge to all players in the room
+      io.to(roomId).emit("challenge", { challenge });
+      console.log(
+        `Room ${roomId} created with theme: ${theme} and challenge: ${challenge}`
+      );
     } catch (error) {
       socket.emit("error", { message: "Failed to create room" });
       console.error("Error creating room:", error);
     }
   });
 
-  socket.on("joinRoom", async ({ roomId, nickname, avatar, userId: providedUserId }) => {
+  socket.on(
+    "joinRoom",
+    async ({ roomId, nickname, avatar, userId: providedUserId }) => {
+      try {
+        const roomDataString = await redisClient.get(roomId);
+        if (!roomDataString) {
+          socket.emit("error", { message: "Room does not exist" });
+          return;
+        }
+
+        const roomData = JSON.parse(roomDataString);
+        if (roomData.players.length >= 2) {
+          socket.emit("error", { message: "Room is full" });
+          return;
+        }
+
+        const finalUserId = providedUserId || userId; // Use provided ID or new one
+        const playerData = {
+          userId: finalUserId,
+          socketId: socket.id,
+          nickname,
+          avatar,
+          ready: false,
+          disconnectTime: null,
+        };
+        roomData.players.push(playerData);
+
+        await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
+        socketIdToPlayerMap.set(socket.id, { roomId, userId: finalUserId }); // Track in Map
+        socket.join(roomId);
+        socket.emit("roomJoined", {
+          roomId,
+          theme: roomData.theme,
+          userId: finalUserId,
+        });
+        io.to(roomId).emit("playerUpdate", { players: roomData.players });
+
+        socket.emit("challenge", { challenge: roomData.challenge });
+
+        console.log(`${nickname} joined room ${roomId}`);
+      } catch (error) {
+        socket.emit("error", { message: "Failed to join room" });
+        console.error("Error joining room:", error);
+      }
+    }
+  );
+
+
+  socket.on("getChallenge", async ({ roomId }) => {
     try {
       const roomDataString = await redisClient.get(roomId);
       if (!roomDataString) {
-        socket.emit("error", { message: "Room does not exist" });
+        socket.emit("error", { message: "Room not found" });
         return;
       }
-
+      
       const roomData = JSON.parse(roomDataString);
-      if (roomData.players.length >= 2) {
-        socket.emit("error", { message: "Room is full" });
-        return;
-      }
-
-      const finalUserId = providedUserId || userId; // Use provided ID or new one
-      const playerData = {
-        userId: finalUserId,
-        socketId: socket.id,
-        nickname,
-        avatar,
-        ready: false,
-        disconnectTime: null
-      };
-      roomData.players.push(playerData);
-
-      await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
-      socketIdToPlayerMap.set(socket.id, { roomId, userId: finalUserId }); // Track in Map
-      socket.join(roomId);
-      socket.emit("roomJoined", { roomId, theme: roomData.theme, userId: finalUserId });
-      io.to(roomId).emit("playerUpdate", { players: roomData.players });
-      console.log(`${nickname} joined room ${roomId}`);
+      socket.emit("challenge", { challenge: roomData.challenge });
     } catch (error) {
-      socket.emit("error", { message: "Failed to join room" });
-      console.error("Error joining room:", error);
+      console.error("Error getting challenge:", error);
+      socket.emit("error", { message: "Failed to get challenge" });
     }
   });
+
+
 
   socket.on("gameState", async ({ roomId, playerId, readyState }) => {
     try {
@@ -110,24 +153,26 @@ io.on("connection", (socket) => {
         socket.emit("error", { message: "Invalid game state data" });
         return;
       }
-  
+
       const roomDataString = await redisClient.get(roomId);
       if (!roomDataString) {
         socket.emit("error", { message: "Room does not exist" });
         return;
       }
-  
+
       const roomData = JSON.parse(roomDataString);
       const player = roomData.players.find((p) => p.userId === playerId);
       if (!player) {
         socket.emit("error", { message: "Player not found in room" });
         return;
       }
-  
+
       player.ready = readyState;
       await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
       io.to(roomId).emit("playerUpdate", { players: roomData.players });
-      console.log(`Player ${playerId} set ready to ${readyState} in room ${roomId}`);
+      console.log(
+        `Player ${playerId} set ready to ${readyState} in room ${roomId}`
+      );
     } catch (error) {
       socket.emit("error", { message: "Failed to update game state" });
       console.error("Error updating game state:", error);
@@ -175,7 +220,7 @@ io.on("connection", (socket) => {
     try {
       const roomDataString = await redisClient.get(roomId);
       if (!roomDataString) {
-        socketIdToPlayerMap.delete(socket.id); 
+        socketIdToPlayerMap.delete(socket.id);
         return;
       }
 
@@ -196,7 +241,6 @@ io.on("connection", (socket) => {
   });
 });
 
-
 setInterval(async () => {
   try {
     const roomKeys = await redisClient.keys("*");
@@ -210,7 +254,7 @@ setInterval(async () => {
 
       const updatedPlayers = roomData.players.filter((p) => {
         if (p.socketId) return true; // Keep connected players
-        return (currentTime - p.disconnectTime) <= threshold; // Keep recently disconnected
+        return currentTime - p.disconnectTime <= threshold; // Keep recently disconnected
       });
 
       if (updatedPlayers.length < roomData.players.length) {
@@ -228,7 +272,7 @@ setInterval(async () => {
   } catch (error) {
     console.error("Error in cleanup task:", error);
   }
-}, 60000); 
+}, 60000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

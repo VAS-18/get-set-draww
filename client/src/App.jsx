@@ -11,7 +11,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={<HomeScreen />} />
           <Route path="/:roomId" element={<RoomScreen />} />
-          <Route path="/drawing-board" element={<DrawingPage/>} />
+          <Route path="/drawing/:roomId" element={<DrawingPage/>} />
         </Routes>
       </Router>
     </SocketProvider>

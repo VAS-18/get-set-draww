@@ -47,9 +47,9 @@ const RoomScreen = () => {
 
   useEffect(() => {
     if(players.length === 2 && players.every(p => p.ready)){
-      navigate('/drawing-board');
+      navigate(`/drawing/${roomId}`); // Update navigation path
     }
-  },[players,navigate])
+  },[players, navigate, roomId]);
 
   const toggleReady = (playerId) => {
     const player = players.find((p) => p.userId === playerId);

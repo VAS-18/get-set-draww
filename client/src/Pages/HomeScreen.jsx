@@ -5,6 +5,7 @@ import avatars from "../../utils/avatars";
 import AvatarSelect from "../components/AvatarSelect";
 import GameOptions from "../components/GameOptions";
 import Themes from "../../utils/themes";
+// import words from "../../utils/words";
 
 const HomeScreen = () => {
   const socket = useSocket();
@@ -14,13 +15,15 @@ const HomeScreen = () => {
   const [showPopup, setShowPopup] = useState(false);
   const [roomIdInput, setRoomIdInput] = useState("");
   const [theme, setTheme] = useState("");
-  const themes = ["Animals", "Space", "Food"];
+
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on("roomCreated", ({ roomId, userId }) => {
+    socket.on("roomCreated", ({ roomId, userId, theme }) => {
+
       localStorage.setItem("userId", userId);
+      localStorage.setItem("theme", theme);
       navigate(`/${roomId}`);
     });
 
@@ -69,7 +72,6 @@ const HomeScreen = () => {
     });
   };
 
-  // console.log(selectedAvatar)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -106,107 +108,6 @@ const HomeScreen = () => {
         </div>
 
         {showPopup && <GameOptions theme={theme} themes={Themes} setTheme={setTheme} roomIdInput={roomIdInput} setRoomIdInput={setRoomIdInput} handleCreateRoom={handleCreateRoom} handleJoinRoom={handleJoinRoom} onClose={()=> setShowPopup(false)}/>}
-      {/* </div> */}
-
-{/* {showPopup && (
-
-<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-
-  <div className="bg-white p-6 rounded-lg shadow-lg">
-
-    <h2 className="text-xl font-bold mb-4">Game Options</h2>
-
-
-
-    <div className="mb-4">
-
-      <select
-
-        value={theme}
-
-        onChange={(e) => setTheme(e.target.value)}
-
-        className="w-full p-2 border rounded mb-2"
-
-      >
-
-        <option value="">Select a theme</option>
-
-        {themes.map((t) => (
-
-          <option key={t} value={t}>{t}</option>
-
-        ))}
-
-      </select>
-
-      <button
-
-        onClick={handleCreateRoom}
-
-        className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600"
-
-      >
-
-        Create a Room
-
-      </button>
-
-    </div>
-
-
-
-    <div>
-
-      <input
-
-        type="text"
-
-        value={roomIdInput}
-
-        onChange={(e) => setRoomIdInput(e.target.value)}
-
-        placeholder="Enter room code"
-
-        className="w-full p-2 border rounded mb-2"
-
-      />
-
-      <button
-
-        onClick={handleJoinRoom}
-
-        className="w-full bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600"
-
-      >
-
-        Join a Game
-
-      </button>
-
-    </div>
-
-
-
-    <button
-
-      onClick={() => setShowPopup(false)}
-
-      className="mt-4 text-red-500"
-
-    >
-
-      Close
-
-    </button>
-
-  </div>
-
-</div>
-
-)}
-
- */}
       </div>
     </div>
   );
