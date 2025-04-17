@@ -19,37 +19,36 @@ const DrawingPage = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false);
 
-  const {roomId} = useParams();
-
+  const { roomId } = useParams();
 
   //Challenge
   useEffect(() => {
     if (!socket) return;
-    
+
     socket.emit("getChallenge", { roomId });
-    
+
     const handleChallenge = (data) => {
       console.log("Received challenge:", data);
       setGameChallenge(data.challenge);
     };
-    
+
     socket.on("challenge", handleChallenge);
-    
+
     return () => {
       socket.off("challenge", handleChallenge);
     };
   }, [socket]);
 
   //mounting the timer
-  useEffect(()=>{
-    if(!gameStarted || isTimeUp){
+  useEffect(() => {
+    if (!gameStarted || isTimeUp) {
       return;
     }
 
     //Game Timer **TIK TOK TIK TOK**
-    const timer = setInterval(()=>{
-      setTimeLeft((prev)=>{
-        if(prev <= 1){
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
           clearInterval(timer);
           setIsTimeUp(true);
           //TODO handleTimeUp
@@ -57,11 +56,10 @@ const DrawingPage = () => {
           return 0;
         }
 
-        return prev-1;
+        return prev - 1;
       });
     }, 1000);
-  },[gameStarted,isTimeUp]);
-
+  }, [gameStarted, isTimeUp]);
 
   // Initialize canvas and context
   useEffect(() => {
@@ -183,6 +181,9 @@ const DrawingPage = () => {
 
   // Start drawing or apply the paint bucket if that tool is selected.
   const startDrawing = (e) => {
+    if (isTimeUp || !gameStarted) {
+      return;
+    }
     const { offsetX, offsetY } = e.nativeEvent;
     if (tool === "bucket") {
       floodFill(offsetX, offsetY);
@@ -194,6 +195,10 @@ const DrawingPage = () => {
   };
 
   const draw = (e) => {
+    if (isTimeUp || !gameStarted) {
+      return;
+    }
+
     if (!isDrawing || tool === "bucket") return;
     const { offsetX, offsetY } = e.nativeEvent;
     ctxRef.current.lineTo(offsetX, offsetY);
@@ -214,22 +219,22 @@ const DrawingPage = () => {
   };
 
   //time up handler
-  const handleTimeUp = async()=>{
+  const handleTimeUp = async () => {
     const canvas = canvasRef.current;
-    const imageData = canvas.toDataURL('image/png');
+    const imageData = canvas.toDataURL("image/png");
 
     //converting the image into a blob to pass it on to the AI judge
     const response = await fetch(imageData);
     const blob = await response.blob();
 
     const formData = new FormData();
-    formData.append('image', blob, 'drawing.png');
-    formData.append('challenge', gameChallenge);
+    formData.append("image", blob, "drawing.png");
+    formData.append("challenge", gameChallenge);
 
-    socket.emit('drawingDone',{
+    socket.emit("drawingDone", {
       roomId,
       imageData: imageData,
-      challenge: gameChallenge
+      challenge: gameChallenge,
     });
   };
 
@@ -310,13 +315,32 @@ const DrawingPage = () => {
       </div>
 
       {/* Canvas Area */}
-      <div className="flex flex-col justify-center items-center">
-        <div>
-          {gameChallenge}
+      <div className="flex flex-col items-center mb-4">
+        <div className="text-xl font-bold mb-2">
+          {gameStarted ? (
+            <span className={`${timeLeft <= 10 ? "text-red-500" : ""}`}>
+              Time Left: {Math.floor(timeLeft / 60)}:
+              {(timeLeft % 60).toString().padStart(2, "0")}
+            </span>
+          ) : (
+            <button
+              onClick={() => setGameStarted(true)}
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              Start Drawing
+            </button>
+          )}
         </div>
+        <div className="font-semibold text-lg mb-4">
+          Challenge: {gameChallenge}
+        </div>
+      </div>
+      <div className="flex flex-col justify-center items-center">
         <canvas
           ref={canvasRef}
-          className="border border-dashed"
+          className={`border border-dashed ${
+            isTimeUp ? "opacity-50 cursor-not-allowed" : ""
+          } ${!gameStarted ? "opacity-50" : ""}`}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={finishDrawing}
