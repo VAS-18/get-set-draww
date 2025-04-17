@@ -40,6 +40,28 @@ const DrawingPage = () => {
     };
   }, [socket]);
 
+  //mounting the timer
+  useEffect(()=>{
+    if(!gameStarted || isTimeUp){
+      return;
+    }
+
+    //Game Timer **TIK TOK TIK TOK**
+    const timer = setInterval(()=>{
+      setTimeLeft((prev)=>{
+        if(prev <= 1){
+          clearInterval(timer);
+          setIsTimeUp(true);
+          //TODO handleTimeUp
+
+          return 0;
+        }
+
+        return prev-1;
+      });
+    }, 1000);
+  },[gameStarted,isTimeUp]);
+
 
   // Initialize canvas and context
   useEffect(() => {
@@ -189,6 +211,26 @@ const DrawingPage = () => {
   const handleBrushSize = (size) => {
     setLineWidth(size);
     setSizeSelected(size);
+  };
+
+  //time up handler
+  const handleTimeUp = async()=>{
+    const canvas = canvasRef.current;
+    const imageData = canvas.toDataURL('image/png');
+
+    //converting the image into a blob to pass it on to the AI judge
+    const response = await fetch(imageData);
+    const blob = await response.blob();
+
+    const formData = new FormData();
+    formData.append('image', blob, 'drawing.png');
+    formData.append('challenge', gameChallenge);
+
+    socket.emit('drawingDone',{
+      roomId,
+      imageData: imageData,
+      challenge: gameChallenge
+    });
   };
 
   const buttonStyle = [
