@@ -58,6 +58,7 @@ io.on("connection", (socket) => {
             avatar,
             ready: false,
             disconnectTime: null,
+            currentState: false,
           },
         ],
       };
@@ -105,6 +106,7 @@ io.on("connection", (socket) => {
           avatar,
           ready: false,
           disconnectTime: null,
+          isSubmitted: false,
         };
         roomData.players.push(playerData);
 
@@ -128,7 +130,7 @@ io.on("connection", (socket) => {
     }
   );
 
-
+  // generates the challenge
   socket.on("getChallenge", async ({ roomId }) => {
     try {
       const roomDataString = await redisClient.get(roomId);
@@ -136,7 +138,7 @@ io.on("connection", (socket) => {
         socket.emit("error", { message: "Room not found" });
         return;
       }
-      
+
       const roomData = JSON.parse(roomDataString);
       socket.emit("challenge", { challenge: roomData.challenge });
     } catch (error) {
@@ -144,8 +146,6 @@ io.on("connection", (socket) => {
       socket.emit("error", { message: "Failed to get challenge" });
     }
   });
-
-
 
   socket.on("gameState", async ({ roomId, playerId, readyState }) => {
     try {
@@ -209,6 +209,128 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("DrawingState", async ({ roomId, userId, isDrawing }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (!roomDataString) {
+        socket.emit("error", { message: "Room does not exist" });
+        return;
+      }
+
+      const roomData = JSON.parse(roomDataString);
+      const player = roomData.players.find((p) => p.userId == userId);
+
+      if (player) {
+        player.isDrawing = isDrawing;
+        await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
+        io.to(roomId).emit("playerUpdate", { players: roomData.players });
+      }
+    } catch (error) {
+      socket.emit("error", {
+        message: "Failed to send DrawingState to the room",
+      });
+      console.error("Failed to send DrawingState to the room", error);
+    }
+  });
+
+  socket.on("getPlayers", async ({ roomId }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (roomDataString) {
+          const roomData = JSON.parse(roomDataString);
+          socket.emit("playerUpdate", { 
+              players: roomData.players || [] 
+          });
+          console.log("Sending players:", roomData.players);
+      } else {
+          socket.emit("playerUpdate", { players: [] });
+          console.log("No room data found for:", roomId);
+      }
+  } catch (error) {
+      console.error("Error fetching players:", error);
+      socket.emit("error", { message: "Failed to fetch players" });
+  }
+  });
+
+  socket.on("getGameState", async ({ roomId }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (!roomDataString) {
+        socket.emit("error", { message: "Room not found" });
+        return;
+      }
+
+      const roomData = JSON.parse(roomDataString);
+      socket.emit("gameStateUpdate", {
+        isStarted: roomData.gameStarted || false,
+        isDrawing: roomData.isDrawing || false
+      });
+    } catch (error) {
+      console.error("Error getting game state:", error);
+      socket.emit("error", { message: "Failed to get game state" });
+    }
+  });
+
+  socket.on("updateGameState", async ({ roomId, userId, isStarted, isDrawing }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (!roomDataString) {
+        socket.emit("error", { message: "Room not found" });
+        return;
+      }
+
+      const roomData = JSON.parse(roomDataString);
+      roomData.gameStarted = isStarted;
+      roomData.isDrawing = isDrawing;
+
+      await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
+      io.to(roomId).emit("gameStateUpdate", { isStarted, isDrawing });
+    } catch (error) {
+      console.error("Error updating game state:", error);
+      socket.emit("error", { message: "Failed to update game state" });
+    }
+  });
+
+  //Timer logic
+  socket.on("getTimerState", async ({ roomId }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (!roomDataString) {
+        socket.emit("error", { message: "Room not found" });
+        return;
+      }
+
+      const roomData = JSON.parse(roomDataString);
+      if (roomData.timerState) {
+        socket.emit("timerUpdate", roomData.timerState);
+      }
+    } catch (error) {
+      console.error("Error getting timer state:", error);
+      socket.emit("error", { message: "Failed to get timer state" });
+    }
+  });
+
+  socket.on("updateTimer", async ({ roomId, remainingTime, running }) => {
+    try {
+      const roomDataString = await redisClient.get(roomId);
+      if (!roomDataString) {
+        socket.emit("error", { message: "Room not found" });
+        return;
+      }
+
+      const roomData = JSON.parse(roomDataString);
+      roomData.timerState = { remainingTime, running };
+      
+      await redisClient.setEx(roomId, 3600, JSON.stringify(roomData));
+      io.to(roomId).emit("timerUpdate", { remainingTime, running });
+    } catch (error) {
+      console.error("Error updating timer:", error);
+      socket.emit("error", { message: "Failed to update timer" });
+    }
+  });
+
+
+  //Player disconnect logic
   socket.on("disconnect", async () => {
     const playerInfo = socketIdToPlayerMap.get(socket.id);
     if (!playerInfo) {

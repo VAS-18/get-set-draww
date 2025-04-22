@@ -1,8 +1,10 @@
 import React, { useRef, useState, useEffect } from "react";
-import * as motion from "motion/react-client";
+import { motion } from "framer-motion";
 import colorSwatches from "../../utils/colors";
 import { useSocket } from "../context/SocketContext";
 import { useParams } from "react-router-dom";
+import DrawingState from "../components/DrawingState";
+import Clock from "../components/Clock";
 
 const DrawingPage = () => {
   const socket = useSocket();
@@ -15,53 +17,40 @@ const DrawingPage = () => {
   const [sizeSelected, setSizeSelected] = useState(10);
   const [selectedColor, setSelectedColor] = useState(null);
   const [gameChallenge, setGameChallenge] = useState("");
-  const [timeLeft, setTimeLeft] = useState(120);
+
   const [gameStarted, setGameStarted] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false);
+  const [isPlayerDrawing, setIsPlayerDrawing] = useState(false);
 
   const { roomId } = useParams();
 
-  //Challenge
+  // Challenge
+  useEffect(() => {
+    if (!socket) return;
+    socket.emit("getChallenge", { roomId });
+    const handleChallenge = data => setGameChallenge(data.challenge);
+    socket.on("challenge", handleChallenge);
+    return () => socket.off("challenge", handleChallenge);
+  }, [socket, roomId]);
+
   useEffect(() => {
     if (!socket) return;
 
-    socket.emit("getChallenge", { roomId });
+    // Get initial game state when component mounts
+    socket.emit("getGameState", { roomId });
 
-    const handleChallenge = (data) => {
-      console.log("Received challenge:", data);
-      setGameChallenge(data.challenge);
-    };
-
-    socket.on("challenge", handleChallenge);
+    // Listen for game state updates
+    socket.on("gameStateUpdate", ({ isStarted, isDrawing }) => {
+      setGameStarted(isStarted);
+      setIsPlayerDrawing(isDrawing);
+    });
 
     return () => {
-      socket.off("challenge", handleChallenge);
+      socket.off("gameStateUpdate");
     };
-  }, [socket]);
+  }, [socket, roomId]);
 
-  //mounting the timer
-  useEffect(() => {
-    if (!gameStarted || isTimeUp) {
-      return;
-    }
-
-    //Game Timer **TIK TOK TIK TOK**
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setIsTimeUp(true);
-          //TODO handleTimeUp
-
-          return 0;
-        }
-
-        return prev - 1;
-      });
-    }, 1000);
-  }, [gameStarted, isTimeUp]);
-
-  // Initialize canvas and context
+  // Init canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = 1200;
@@ -74,20 +63,21 @@ const DrawingPage = () => {
     ctxRef.current = ctx;
   }, []);
 
-  // Update context when tool, color, or lineWidth changes
+  // Update drawing tool & style
   useEffect(() => {
-    if (ctxRef.current) {
-      if (tool === "eraser") {
-        ctxRef.current.globalCompositeOperation = "destination-out";
-      } else {
-        ctxRef.current.globalCompositeOperation = "source-over";
-        ctxRef.current.strokeStyle = color;
-      }
-      ctxRef.current.lineWidth = lineWidth;
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = color;
     }
+    ctx.lineWidth = lineWidth;
   }, [tool, color, lineWidth]);
 
-  const hexToRgba = (hex) => {
+  // Helpers
+  const hexToRgba = hex => {
     hex = hex.replace(/^#/, "");
     const bigint = parseInt(hex, 16);
     const r = (bigint >> 16) & 255;
@@ -96,7 +86,7 @@ const DrawingPage = () => {
     return [r, g, b, 255];
   };
 
-  // Flood-fill algorithm for the paint bucket tool (Thank you yt T_T)
+  // Flood fill implementation...
   const floodFill = (startX, startY) => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -104,205 +94,148 @@ const DrawingPage = () => {
     const data = imageData.data;
     const width = canvas.width;
     const height = canvas.height;
-
     const stack = [[startX, startY]];
     const startPos = (startY * width + startX) * 4;
     const startColor = data.slice(startPos, startPos + 4);
     const fillColor = hexToRgba(color);
-
-    // Function to compare two colors (arrays of [r, g, b, a])
-    const colorsMatch = (a, b) =>
-      a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
-
-    // If the starting pixel is already the fill color, nothing to do.
+    const colorsMatch = (a, b) => a.every((v, i) => v === b[i]);
     if (colorsMatch(startColor, fillColor)) return;
 
     while (stack.length) {
       let [x, y] = stack.pop();
-      let currentPos = (y * width + x) * 4;
-
-      // Move upward to find the top boundary of the area to fill.
-      while (
-        y >= 0 &&
-        colorsMatch(data.slice(currentPos, currentPos + 4), startColor)
-      ) {
+      let pos = (y * width + x) * 4;
+      while (y >= 0 && colorsMatch(data.slice(pos, pos + 4), startColor)) {
         y--;
-        currentPos -= width * 4;
+        pos -= width * 4;
       }
-
-      // Step back to the valid position
       y++;
-      currentPos += width * 4;
+      pos += width * 4;
       let reachLeft = false;
       let reachRight = false;
-
-      // Fill downward and push adjacent pixels on the stack when needed.
-      while (
-        y < height &&
-        colorsMatch(data.slice(currentPos, currentPos + 4), startColor)
-      ) {
-        // Fill the current pixel with the new color.
-        data[currentPos] = fillColor[0];
-        data[currentPos + 1] = fillColor[1];
-        data[currentPos + 2] = fillColor[2];
-        data[currentPos + 3] = fillColor[3];
-
-        // Check left pixel.
+      while (y < height && colorsMatch(data.slice(pos, pos + 4), startColor)) {
+        // fill pixel
+        data[pos] = fillColor[0];
+        data[pos + 1] = fillColor[1];
+        data[pos + 2] = fillColor[2];
+        data[pos + 3] = fillColor[3];
         if (x > 0) {
-          const leftPos = currentPos - 4;
+          const leftPos = pos - 4;
           if (colorsMatch(data.slice(leftPos, leftPos + 4), startColor)) {
-            if (!reachLeft) {
-              stack.push([x - 1, y]);
-              reachLeft = true;
-            }
-          } else {
-            reachLeft = false;
-          }
+            if (!reachLeft) { stack.push([x - 1, y]); reachLeft = true; }
+          } else reachLeft = false;
         }
-
-        // Check right pixel.
         if (x < width - 1) {
-          const rightPos = currentPos + 4;
+          const rightPos = pos + 4;
           if (colorsMatch(data.slice(rightPos, rightPos + 4), startColor)) {
-            if (!reachRight) {
-              stack.push([x + 1, y]);
-              reachRight = true;
-            }
-          } else {
-            reachRight = false;
-          }
+            if (!reachRight) { stack.push([x + 1, y]); reachRight = true; }
+          } else reachRight = false;
         }
         y++;
-        currentPos += width * 4;
+        pos += width * 4;
       }
     }
     ctx.putImageData(imageData, 0, 0);
   };
 
-  // Start drawing or apply the paint bucket if that tool is selected.
-  const startDrawing = (e) => {
-    if (isTimeUp || !gameStarted) {
-      return;
-    }
+  // Drawing handlers
+  const startDrawing = e => {
+    if (isTimeUp || !gameStarted) return;
     const { offsetX, offsetY } = e.nativeEvent;
-    if (tool === "bucket") {
-      floodFill(offsetX, offsetY);
-      return;
-    }
+    if (tool === "bucket") return floodFill(offsetX, offsetY);
     ctxRef.current.beginPath();
     ctxRef.current.moveTo(offsetX, offsetY);
     setIsDrawing(true);
   };
 
-  const draw = (e) => {
-    if (isTimeUp || !gameStarted) {
-      return;
-    }
-
-    if (!isDrawing || tool === "bucket") return;
+  const draw = e => {
+    if (isTimeUp || !gameStarted || !isDrawing || tool === "bucket") return;
     const { offsetX, offsetY } = e.nativeEvent;
     ctxRef.current.lineTo(offsetX, offsetY);
     ctxRef.current.stroke();
   };
 
   const finishDrawing = () => {
-    if (tool !== "bucket") {
-      ctxRef.current.closePath();
-    }
+    if (tool !== "bucket") ctxRef.current.closePath();
     setIsDrawing(false);
   };
 
-  //on click this fucn changes the size of the current brush
-  const handleBrushSize = (size) => {
+  const handleBrushSize = size => {
     setLineWidth(size);
     setSizeSelected(size);
   };
 
-  //time up handler
-  const handleTimeUp = async () => {
-    const canvas = canvasRef.current;
-    const imageData = canvas.toDataURL("image/png");
-
-    //converting the image into a blob to pass it on to the AI judge
-    const response = await fetch(imageData);
-    const blob = await response.blob();
-
-    const formData = new FormData();
-    formData.append("image", blob, "drawing.png");
-    formData.append("challenge", gameChallenge);
-
-    socket.emit("drawingDone", {
+  const handleDrawingState = () => {
+    setIsPlayerDrawing(true);
+    setGameStarted(true);
+    socket.emit("updateGameState", {
       roomId,
-      imageData: imageData,
-      challenge: gameChallenge,
+      userId: localStorage.getItem("userId"),
+      isStarted: true,
+      isDrawing: true,
     });
   };
 
-  const buttonStyle = [
-    { size: 5, className: "h-2 w-2" },
-    { size: 10, className: "h-6 w-6" },
-    { size: 15, className: "h-9 w-9" },
-    { size: 20, className: "h-12 w-12" },
-  ];
+  const handleTimeUp = async () => {
+    const canvas = canvasRef.current;
+    const imageData = canvas.toDataURL("image/png");
+    socket.emit("drawingDone", { roomId, imageData, challenge: gameChallenge });
+  };
 
   return (
     <div className="h-screen grid grid-cols-[1fr_3fr_1fr] overflow-hidden">
       {/* Left Sidebar */}
-      <div className="p-4 border-r">
-        <div className="flex flex-col space-y-2">
+      <aside className="p-4 border-r overflow-y-auto">
+        <div className="flex flex-col space-y-4">
           <motion.button
             whileTap={{ scale: 0.9 }}
-            className="border p-2"
+            className="border p-2 cursor-pointer"
             onClick={() => setTool("pencil")}
           >
             Pencil
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.9 }}
-            className="border p-2"
+            className="border p-2 cursor-pointer"
             onClick={() => setTool("eraser")}
           >
             Eraser
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.9 }}
-            className="border p-2"
+            className="border p-2 cursor-pointer"
             onClick={() => setTool("bucket")}
           >
             Bucket
           </motion.button>
 
-          <div className="flex space-x-4 items-center my-10">
-            <span>Size : </span>
-            {buttonStyle.map((btn) => (
+          <div className="flex items-center space-x-2 mt-6">
+            <span>Size:</span>
+            { [5,10,15,20].map(size => (
               <motion.button
-                key={btn.size}
+                key={size}
                 whileTap={{ scale: 0.9 }}
-                onClick={() => handleBrushSize(btn.size)}
-                className={`bg-gray-400 border-2 p-2 rounded-full ${
-                  btn.className
-                } ${
-                  sizeSelected === btn.size
-                    ? "border-3 border-black"
-                    : "border-transparent"
-                }`}
+                onClick={() => handleBrushSize(size)}
+                className={
+                  `cursor-pointer rounded-full border-2 p-2 h-${size/5*3} w-${size/5*3} ` +
+                  (sizeSelected === size ? `border-black` : `border-transparent`)
+                }
               />
-            ))}
+            )) }
           </div>
-          <div className="">
-            {colorSwatches.map((swatch) => (
-              <div key={swatch.name} className="mb-1">
-                <div className="flex justify-center">
-                  {swatch.shades.map((shade) => (
+
+          <div className="mt-6">
+            {colorSwatches.map(swatch => (
+              <div key={swatch.name} className="mb-2">
+                <div className="flex justify-center space-x-2">
+                  {swatch.shades.map(shade => (
                     <motion.button
                       key={shade}
-                      className={`w-6 h-6 border ${
-                        selectedColor === shade
-                          ? "border-black"
-                          : "border-transparent"
-                      }`}
+                      className={
+                        `cursor-pointer w-6 h-6 rounded border-2 ` +
+                        (selectedColor === shade ? `border-black` : `border-transparent`)
+                      }
                       style={{ backgroundColor: shade }}
-                      onClick={() => setColor(shade)}
+                      onClick={() => { setColor(shade); setSelectedColor(shade); }}
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                     />
@@ -312,44 +245,30 @@ const DrawingPage = () => {
             ))}
           </div>
         </div>
-      </div>
+      </aside>
 
-      {/* Canvas Area */}
-      <div className="flex flex-col items-center mb-4">
-        <div className="text-xl font-bold mb-2">
-          {gameStarted ? (
-            <span className={`${timeLeft <= 10 ? "text-red-500" : ""}`}>
-              Time Left: {Math.floor(timeLeft / 60)}:
-              {(timeLeft % 60).toString().padStart(2, "0")}
-            </span>
-          ) : (
-            <button
-              onClick={() => setGameStarted(true)}
-              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-            >
-              Start Drawing
-            </button>
-          )}
+      {/* Main Canvas Area */}
+      <main className="flex flex-col items-center justify-center space-y-4">
+        <div className="text-xl font-bold">
+          <Clock roomId={roomId}/>
         </div>
-        <div className="font-semibold text-lg mb-4">
+        <div className="font-semibold text-lg">
           Challenge: {gameChallenge}
         </div>
-      </div>
-      <div className="flex flex-col justify-center items-center">
         <canvas
           ref={canvasRef}
-          className={`border border-dashed ${
-            isTimeUp ? "opacity-50 cursor-not-allowed" : ""
-          } ${!gameStarted ? "opacity-50" : ""}`}
+          className={`border border-dashed ${isTimeUp ? "opacity-50 cursor-not-allowed" : "cursor-crosshair"}`}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={finishDrawing}
           onMouseLeave={finishDrawing}
         />
-      </div>
+      </main>
 
       {/* Right Sidebar */}
-      <div className="p-4 border-l"></div>
+      <aside className="p-4 border-l overflow-y-auto">
+        <DrawingState />
+      </aside>
     </div>
   );
 };
